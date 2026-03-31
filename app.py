@@ -4,9 +4,13 @@ import tempfile
 import os
 from pathlib import Path
 
-from extractor import extract_text_and_images
-from llm_processor import process_documents
-from report_generator import generate_docx
+try:
+    from extractor import extract_text_and_images
+    from llm_processor import process_documents
+    from report_generator import generate_docx
+except ImportError as e:
+    st.error(f"❌ Import error: {e}")
+    st.stop()
 
 
 # Cached extraction functions to avoid re-processing on reruns

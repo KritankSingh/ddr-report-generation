@@ -144,49 +144,65 @@ if generate_button:
 
     try:
         # Step 1: Extract documents (with caching)
-        with st.spinner("📖 Extracting documents..."):
-            progress_bar.progress(10, text="📖 Extracting inspection report...")
-            inspection_data = cached_extract_inspection(
-                inspection_file.getbuffer().tobytes(),
-                inspection_file.name
-            )
+        try:
+            with st.spinner("📖 Extracting documents..."):
+                progress_bar.progress(10, text="📖 Extracting inspection report...")
+                inspection_data = cached_extract_inspection(
+                    inspection_file.getbuffer().tobytes(),
+                    inspection_file.name
+                )
+                st.write(f"DEBUG: Inspection data extracted. Text length: {len(inspection_data.get('text', ''))}")
 
-            progress_bar.progress(30, text="📖 Extracting thermal report...")
-            thermal_data = cached_extract_thermal(
-                thermal_file.getbuffer().tobytes(),
-                thermal_file.name
-            )
+                progress_bar.progress(30, text="📖 Extracting thermal report...")
+                thermal_data = cached_extract_thermal(
+                    thermal_file.getbuffer().tobytes(),
+                    thermal_file.name
+                )
+                st.write(f"DEBUG: Thermal data extracted. Text length: {len(thermal_data.get('text', ''))}")
 
-            progress_bar.progress(50, text="✓ Extraction complete")
-            st.success(
-                f"✓ Extracted {len(inspection_data.get('images', []))} inspection images "
-                f"and {len(thermal_data.get('images', []))} thermal images"
-            )
+                progress_bar.progress(50, text="✓ Extraction complete")
+                st.success(
+                    f"✓ Extracted {len(inspection_data.get('images', []))} inspection images "
+                    f"and {len(thermal_data.get('images', []))} thermal images"
+                )
+        except Exception as e:
+            st.error(f"❌ **Extraction Error**: {type(e).__name__}: {str(e)}")
+            import traceback
+            st.error(f"Traceback:\n{traceback.format_exc()}")
+            st.stop()
 
         # Step 2: Analyze with Claude API
-        with st.spinner("🤖 Analyzing with Claude API..."):
-            progress_bar.progress(60, text="🤖 Structuring DDR...")
-            try:
+        try:
+            with st.spinner("🤖 Analyzing with Claude API..."):
+                progress_bar.progress(60, text="🤖 Structuring DDR...")
+                st.write("DEBUG: Starting Claude API call...")
                 ddr_data, insp_imgs, therm_imgs, area_mapping = process_documents(
                     inspection_data, thermal_data, api_key=api_key
                 )
+                st.write("DEBUG: Claude API call completed")
                 progress_bar.progress(80, text="✓ Analysis complete")
                 areas_mapped = len(area_mapping) if area_mapping else 0
                 st.success(f"✓ DDR structure generated successfully ({areas_mapped} areas mapped)")
-            except KeyError as e:
-                st.error(f"❌ API Key error: {e}. Ensure `Anthropic_API_Key` is set correctly.")
-                st.stop()
-            except Exception as e:
-                st.error(f"❌ Processing error: {e}")
-                st.stop()
+        except KeyError as e:
+            st.error(f"❌ **API Key Error**: {str(e)}. Ensure `Anthropic_API_Key` is set correctly in Streamlit secrets.")
+            import traceback
+            st.error(f"Traceback:\n{traceback.format_exc()}")
+            st.stop()
+        except Exception as e:
+            st.error(f"❌ **Claude API Processing Error**: {type(e).__name__}: {str(e)}")
+            import traceback
+            st.error(f"Traceback:\n{traceback.format_exc()}")
+            st.stop()
 
         # Step 3: Generate report
-        with st.spinner("📝 Generating DOCX report..."):
-            progress_bar.progress(90, text="📝 Generating report...")
-            try:
+        try:
+            with st.spinner("📝 Generating DOCX report..."):
+                progress_bar.progress(90, text="📝 Generating report...")
+                st.write("DEBUG: Starting DOCX generation...")
                 with tempfile.TemporaryDirectory() as tmpdir:
                     output_docx = Path(tmpdir) / "DDR_Report.docx"
                     generate_docx(ddr_data, insp_imgs, therm_imgs, str(output_docx))
+                    st.write("DEBUG: DOCX file generated")
 
                     # Read the generated file
                     with open(output_docx, "rb") as f:
@@ -197,12 +213,16 @@ if generate_button:
 
                     progress_bar.progress(100, text="✓ Report ready!")
                     st.success("✓ Report generated successfully!")
-            except Exception as e:
-                st.error(f"❌ Report generation error: {e}")
-                st.stop()
+        except Exception as e:
+            st.error(f"❌ **Report Generation Error**: {type(e).__name__}: {str(e)}")
+            import traceback
+            st.error(f"Traceback:\n{traceback.format_exc()}")
+            st.stop()
 
     except Exception as e:
-        st.error(f"❌ Unexpected error: {e}")
+        st.error(f"❌ **Unexpected Error**: {type(e).__name__}: {str(e)}")
+        import traceback
+        st.error(f"Traceback:\n{traceback.format_exc()}")
         st.stop()
 
 # Download section (only show if report was generated)

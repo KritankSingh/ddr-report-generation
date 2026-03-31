@@ -67,26 +67,34 @@ Your task is to generate a structured Detailed Diagnostic Report (DDR) with 7 se
 def process_documents(inspection_data, thermal_data):
     """
     Process extracted inspection and thermal report data using Claude API.
+    Maps inspection images to areas and thermal images to sections.
 
     Args:
-        inspection_data: dict with 'text' and 'images' from inspection PDF
-        thermal_data: dict with 'text' and 'images' from thermal PDF
+        inspection_data: dict with 'text', 'images', 'images_by_page' from inspection PDF
+        thermal_data: dict with 'text', 'images', 'images_by_page' from thermal PDF
 
     Returns:
-        dict with structured DDR content
+        tuple: (ddr_data, inspection_images, thermal_images)
     """
-    # Prepare image metadata for reference
+    # Prepare thermal image metadata for reference
     thermal_image_info = ""
-    if thermal_data['images']:
+    if thermal_data.get('images'):
         thermal_image_info = "\n\n**THERMAL IMAGES EXTRACTED:** (total " + str(len(thermal_data['images'])) + " images)\n"
         thermal_image_info += "These are indexed 0-" + str(len(thermal_data['images']) - 1) + " based on their order in the PDF.\n"
-        thermal_image_info += "Map each area_observation to relevant thermal_image_indices from this list.\n"
+        thermal_image_info += "Assign thermal_image_indices to areas where thermal data is relevant.\n"
+
+    # Prepare inspection images note
+    inspection_image_note = ""
+    if inspection_data.get('images_by_page'):
+        inspection_image_note = f"\n\n**INSPECTION IMAGES EXTRACTED:** (total {len(inspection_data['images'])} images across {len(inspection_data['images_by_page'])} pages)\n"
+        inspection_image_note += "Images are pre-filtered (>10KB) and limited to best quality per area.\n"
 
     # Prepare the user message with both documents
     user_message = f"""Please analyze these two property inspection documents and generate a DDR.
 
 **INSPECTION REPORT:**
 {inspection_data['text'][:8000]}
+{inspection_image_note}
 
 **THERMAL REPORT:**
 {thermal_data['text'][:4000]}
@@ -94,8 +102,8 @@ def process_documents(inspection_data, thermal_data):
 
 IMPORTANT FOR IMAGE MAPPING:
 - For each area in area_observations, assign thermal_image_indices (array of numbers)
-- Use indices 0-{len(thermal_data['images']) - 1} to reference the thermal images
-- Each area should reference DIFFERENT images (not the same image repeated)
+- Use indices 0-{len(thermal_data['images']) - 1} to reference thermal images
+- Assign different images to different areas (avoid repeating same image)
 - Use empty array [] if no thermal images apply to an area
 
 Now generate the complete JSON DDR structure as specified."""
@@ -103,7 +111,7 @@ Now generate the complete JSON DDR structure as specified."""
     print("Calling Claude API for DDR structuring...")
     message = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=4096,  # Increased to handle large DDRs with many area observations
+        max_tokens=4096,
         system=SYSTEM_PROMPT,
         messages=[
             {"role": "user", "content": user_message}
@@ -112,19 +120,19 @@ Now generate the complete JSON DDR structure as specified."""
 
     # Parse the JSON response
     response_text = message.content[0].text
-    print(f"[DEBUG] Raw LLM response:\n{response_text}\n")
+    print(f"[DEBUG] Raw LLM response:\n{response_text[:500]}\n")
 
     # Try to extract JSON from response
     try:
         # Strip markdown code blocks (```json ... ```)
         cleaned_text = response_text.strip()
         if cleaned_text.startswith('```json'):
-            cleaned_text = cleaned_text[7:]  # Remove ```json
+            cleaned_text = cleaned_text[7:]
         elif cleaned_text.startswith('```'):
-            cleaned_text = cleaned_text[3:]  # Remove ```
+            cleaned_text = cleaned_text[3:]
 
         if cleaned_text.endswith('```'):
-            cleaned_text = cleaned_text[:-3]  # Remove trailing ```
+            cleaned_text = cleaned_text[:-3]
 
         cleaned_text = cleaned_text.strip()
 
@@ -138,7 +146,6 @@ Now generate the complete JSON DDR structure as specified."""
             raise ValueError("No JSON found in response")
     except json.JSONDecodeError as e:
         print(f"ERROR: Could not parse JSON response: {e}")
-        print(f"Cleaned text: {cleaned_text[:500]}")
         # Return a fallback structure
         ddr_data = {
             "property_issue_summary": response_text[:200],

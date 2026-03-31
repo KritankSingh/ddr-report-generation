@@ -4,6 +4,7 @@ import tempfile
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+import hashlib
 
 # Load environment variables
 load_dotenv()
@@ -11,6 +12,31 @@ load_dotenv()
 from extractor import extract_text_and_images
 from llm_processor import process_documents
 from report_generator import generate_docx
+
+
+# Cached extraction functions to avoid re-processing on reruns
+@st.cache_data(show_spinner=False)
+def cached_extract_inspection(file_bytes, filename):
+    """Cache inspection report extraction."""
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        f.write(file_bytes)
+        temp_path = f.name
+    try:
+        return extract_text_and_images(temp_path, max_images_per_area=2, min_image_size_kb=10)
+    finally:
+        os.unlink(temp_path)
+
+
+@st.cache_data(show_spinner=False)
+def cached_extract_thermal(file_bytes, filename):
+    """Cache thermal report extraction."""
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        f.write(file_bytes)
+        temp_path = f.name
+    try:
+        return extract_text_and_images(temp_path, max_images_per_area=5, min_image_size_kb=10)
+    finally:
+        os.unlink(temp_path)
 
 # Page config
 st.set_page_config(
@@ -96,52 +122,50 @@ if generate_button:
         st.error("❌ Please upload both documents before generating the report.")
         st.stop()
 
-    # Show progress
-    with st.spinner("Processing your documents..."):
-        try:
-            # Create temporary directory for uploaded files
-            with tempfile.TemporaryDirectory() as tmpdir:
-                # Save uploaded files temporarily
-                inspection_path = Path(tmpdir) / "inspection.pdf"
-                thermal_path = Path(tmpdir) / "thermal.pdf"
+    # Create progress container
+    progress_container = st.container()
+    progress_bar = progress_container.progress(0, text="🔄 Preparing...")
 
-                with open(inspection_path, "wb") as f:
-                    f.write(inspection_file.getbuffer())
+    try:
+        # Step 1: Extract documents (with caching)
+        with st.spinner("📖 Extracting documents..."):
+            progress_bar.progress(10, text="📖 Extracting inspection report...")
+            inspection_data = cached_extract_inspection(
+                inspection_file.getbuffer().tobytes(),
+                inspection_file.name
+            )
 
-                with open(thermal_path, "wb") as f:
-                    f.write(thermal_file.getbuffer())
+            progress_bar.progress(30, text="📖 Extracting thermal report...")
+            thermal_data = cached_extract_thermal(
+                thermal_file.getbuffer().tobytes(),
+                thermal_file.name
+            )
 
-                # Step 1: Extract text and images
-                st.info("📖 Step 1/3: Extracting documents...")
-                try:
-                    inspection_data = extract_text_and_images(str(inspection_path))
-                    thermal_data = extract_text_and_images(str(thermal_path))
-                    st.success(
-                        f"✓ Extracted {len(inspection_data['images'])} images from inspection report "
-                        f"and {len(thermal_data['images'])} images from thermal report"
-                    )
-                except FileNotFoundError as e:
-                    st.error(f"❌ File error: {e}")
-                    st.stop()
-                except Exception as e:
-                    st.error(f"❌ Extraction error: {e}")
-                    st.stop()
+            progress_bar.progress(50, text="✓ Extraction complete")
+            st.success(
+                f"✓ Extracted {len(inspection_data.get('images', []))} inspection images "
+                f"and {len(thermal_data.get('images', []))} thermal images"
+            )
 
-                # Step 2: Process with Claude API
-                st.info("🤖 Step 2/3: Processing with Claude API...")
-                try:
-                    ddr_data, insp_imgs, therm_imgs = process_documents(inspection_data, thermal_data)
-                    st.success("✓ DDR structure generated successfully")
-                except KeyError as e:
-                    st.error(f"❌ API Key error: {e}. Ensure `Anthropic_API_Key` is set correctly.")
-                    st.stop()
-                except Exception as e:
-                    st.error(f"❌ Processing error: {e}")
-                    st.stop()
+        # Step 2: Analyze with Claude API
+        with st.spinner("🤖 Analyzing with Claude API..."):
+            progress_bar.progress(60, text="🤖 Structuring DDR...")
+            try:
+                ddr_data, insp_imgs, therm_imgs = process_documents(inspection_data, thermal_data)
+                progress_bar.progress(80, text="✓ Analysis complete")
+                st.success("✓ DDR structure generated successfully")
+            except KeyError as e:
+                st.error(f"❌ API Key error: {e}. Ensure `Anthropic_API_Key` is set correctly.")
+                st.stop()
+            except Exception as e:
+                st.error(f"❌ Processing error: {e}")
+                st.stop()
 
-                # Step 3: Generate DOCX report
-                st.info("📝 Step 3/3: Generating DOCX report...")
-                try:
+        # Step 3: Generate report
+        with st.spinner("📝 Generating DOCX report..."):
+            progress_bar.progress(90, text="📝 Generating report...")
+            try:
+                with tempfile.TemporaryDirectory() as tmpdir:
                     output_docx = Path(tmpdir) / "DDR_Report.docx"
                     generate_docx(ddr_data, insp_imgs, therm_imgs, str(output_docx))
 
@@ -152,12 +176,15 @@ if generate_button:
                     st.session_state.report_generated = True
                     st.session_state.output_file = report_bytes
 
+                    progress_bar.progress(100, text="✓ Report ready!")
                     st.success("✓ Report generated successfully!")
-                except Exception as e:
-                    st.error(f"❌ Report generation error: {e}")
-                    st.stop()
-        except Exception as e:
-            st.error(f"❌ Unexpected error during report generation: {e}")
+            except Exception as e:
+                st.error(f"❌ Report generation error: {e}")
+                st.stop()
+
+    except Exception as e:
+        st.error(f"❌ Unexpected error: {e}")
+        st.stop()
 
 # Download section (only show if report was generated)
 if st.session_state.report_generated and st.session_state.output_file:

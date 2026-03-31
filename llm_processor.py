@@ -3,172 +3,109 @@ import json
 import os
 from anthropic import Anthropic
 
-# System prompt for DDR generation
 SYSTEM_PROMPT = """You are an expert in analyzing property inspection and thermal reports.
-Your task is to generate a structured Detailed Diagnostic Report (DDR) with 7 sections.
-
-**Your output MUST be valid JSON** with this exact structure:
+Generate a structured Detailed Diagnostic Report (DDR) as valid JSON with this exact structure:
 {
-  "property_issue_summary": "High-level overview of all findings (2-3 sentences)",
+  "property_issue_summary": "High-level overview (2-3 sentences)",
   "area_observations": [
     {
-      "area": "Location name (e.g., 'Hall Skirting', 'Master Bedroom')",
-      "findings": "Detailed observations for this area",
+      "area": "Location name",
+      "findings": "Detailed observations",
       "severity": "Critical | High | Medium | Low",
-      "severity_reason": "One sentence explaining the severity rating",
-      "thermal_image_references": "Brief note on which thermal findings apply here, or 'None available'",
-      "thermal_image_indices": [0, 1, 2]
+      "severity_reason": "One sentence explaining severity",
+      "thermal_image_references": "Thermal findings or 'None available'",
+      "thermal_image_indices": [0, 1]
     }
   ],
   "probable_root_causes": "Inferred causes based on evidence",
   "severity_assessment": {
     "overall_level": "Critical | High | Medium | Low",
-    "reasoning": "Explanation of the overall severity"
+    "reasoning": "Explanation"
   },
-  "recommended_actions": [
-    "Action 1",
-    "Action 2"
-  ],
-  "additional_notes": "Anything relevant not covered above",
-  "missing_or_unclear_info": [
-    "Missing data point 1",
-    "Missing data point 2"
-  ]
+  "recommended_actions": ["Action 1", "Action 2"],
+  "additional_notes": "Relevant context",
+  "missing_or_unclear_info": ["Missing data point 1"]
 }
 
-**CRITICAL RULES:**
-1. Extract ONLY what is explicitly stated in the documents. Do NOT invent facts.
-2. If data is absent, list it in "missing_or_unclear_info", not in sections.
-3. Use "Not Available" for any section where no information exists.
-4. Severity ratings (Critical/High/Medium/Low):
-   - Critical: Immediate safety risk or structural failure likely
-   - High: Significant damage requiring urgent attention
-   - Medium: Moderate issue, action needed within weeks
-   - Low: Minor, cosmetic, or monitor-only
-5. Always include a one-sentence reasoning for each severity rating.
-6. If documents conflict on the same issue, explicitly state both versions in findings.
-7. Deduplicate: if the same issue appears in both documents, mention it once with "confirmed in both reports".
-8. Use plain, client-friendly language. Avoid jargon.
-9. Keep findings concise but complete.
+RULES:
+1. Only use facts from the documents. Never invent.
+2. Mark missing data as "Not Available" in missing_or_unclear_info.
+3. Severity: Critical=immediate safety risk, High=urgent, Medium=weeks, Low=minor.
+4. Assign different thermal_image_indices to different areas.
+5. Use plain client-friendly language.
+6. Output ONLY the JSON, no explanation text."""
 
-**THERMAL IMAGE MAPPING:**
-10. For each area_observation, identify which thermal images are relevant (if any).
-11. thermal_image_indices should be an array of zero-based image indices from the thermal PDF.
-    Example: thermal_image_indices: [0, 2, 5] means use thermal images 0, 2, and 5 for this area.
-12. If no thermal images correlate to an area, use thermal_image_indices: [] (empty array).
-13. Look for references to specific thermal image numbers/names in the thermal report.
-14. If the thermal report has named images (e.g., "RB02380X.JPG"), extract the index based on page order.
-15. Never assign the same image index to multiple areas unless explicitly stated.
-16. Each area should get DIFFERENT thermal images (not repeating the same image).
-"""
 
 def process_documents(inspection_data, thermal_data, api_key=None):
-    """
-    Process extracted inspection and thermal report data using Claude API.
-    Uses pre-mapped inspection images (from area_to_images) and maps thermal images.
-
-    Args:
-        inspection_data: dict with 'text', 'images', 'area_to_images' from inspection PDF
-        thermal_data: dict with 'text', 'images', 'area_to_images' from thermal PDF
-        api_key: Anthropic API key (optional, falls back to env var)
-
-    Returns:
-        tuple: (ddr_data, inspection_images, thermal_images, area_image_mapping)
-    """
-    # Get API key from parameter or environment
+    """Process inspection and thermal data using Claude API."""
     if api_key is None:
         api_key = os.getenv("Anthropic_API_Key")
-
     if not api_key:
-        raise ValueError("Anthropic API key not provided and not found in environment")
+        raise ValueError("Anthropic API key not found")
 
-    # Create Anthropic client with provided API key
     client = Anthropic(api_key=api_key)
-    # Build inspection area summary for the API
-    inspection_area_summary = ""
-    if inspection_data.get('area_to_images'):
-        inspection_area_summary = "\n\n**INSPECTION IMAGES MAPPED TO AREAS:**\n"
-        for area_name, images in inspection_data['area_to_images'].items():
-            inspection_area_summary += f"- {area_name}: {len(images)} image(s)\n"
 
-    # Prepare thermal image metadata
-    thermal_image_info = ""
-    if thermal_data.get('images'):
-        thermal_image_info = f"\n\n**THERMAL IMAGES EXTRACTED:** (total {len(thermal_data['images'])} images)\n"
-        thermal_image_info += f"These are indexed 0-{len(thermal_data['images']) - 1} based on their order in the PDF.\n"
-        thermal_image_info += "Assign thermal_image_indices to areas where thermal data is relevant.\n"
+    # Keep input small to avoid timeouts
+    inspection_text = inspection_data['text'][:5000]
+    thermal_text = thermal_data['text'][:2000]
+    num_thermal_images = len(thermal_data.get('images', []))
 
-    # Prepare the user message with both documents
-    user_message = f"""Please analyze these two property inspection documents and generate a DDR.
+    user_message = f"""Analyze these property inspection documents and generate a DDR JSON.
 
-**INSPECTION REPORT:**
-{inspection_data['text'][:8000]}
-{inspection_area_summary}
+INSPECTION REPORT:
+{inspection_text}
 
-**THERMAL REPORT:**
-{thermal_data['text'][:4000]}
-{thermal_image_info}
+THERMAL REPORT:
+{thermal_text}
 
-IMPORTANT FOR IMAGE MAPPING:
-- For each area in area_observations, assign thermal_image_indices (array of numbers)
-- Use indices 0-{len(thermal_data['images']) - 1} to reference thermal images
-- Assign different images to different areas (avoid repeating same image)
-- Use empty array [] if no thermal images apply to an area
-- Inspection images are pre-mapped to areas; focus on thermal image assignment
+THERMAL IMAGES AVAILABLE: {num_thermal_images} images (indices 0-{max(0, num_thermal_images-1)})
+Assign different thermal_image_indices to each area. Use empty [] if none apply.
 
-Now generate the complete JSON DDR structure as specified."""
+Return ONLY valid JSON, no other text."""
 
     try:
         message = client.messages.create(
-            model="claude-opus-4-6",
-            max_tokens=4096,
+            model="claude-haiku-4-5-20251001",
+            max_tokens=3000,
             system=SYSTEM_PROMPT,
-            messages=[
-                {"role": "user", "content": user_message}
-            ]
+            messages=[{"role": "user", "content": user_message}]
         )
-    except Exception as api_error:
-        raise RuntimeError(f"Claude API call failed: {type(api_error).__name__}: {str(api_error)}")
+    except Exception as e:
+        raise RuntimeError(f"Claude API call failed: {str(e)}")
 
-    # Parse the JSON response
+    response_text = message.content[0].text
+
+    # Strip markdown code blocks
+    cleaned = response_text.strip()
+    for prefix in ['```json', '```']:
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix):]
+    if cleaned.endswith('```'):
+        cleaned = cleaned[:-3]
+    cleaned = cleaned.strip()
+
+    # Extract JSON
     try:
-        response_text = message.content[0].text
-    except (IndexError, AttributeError) as e:
-        raise RuntimeError(f"Could not extract text from API response: {str(e)}")
-
-    # Try to extract JSON from response
-    try:
-        # Strip markdown code blocks (```json ... ```)
-        cleaned_text = response_text.strip()
-        if cleaned_text.startswith('```json'):
-            cleaned_text = cleaned_text[7:]
-        elif cleaned_text.startswith('```'):
-            cleaned_text = cleaned_text[3:]
-
-        if cleaned_text.endswith('```'):
-            cleaned_text = cleaned_text[:-3]
-
-        cleaned_text = cleaned_text.strip()
-
-        # Look for JSON block in response
-        json_start = cleaned_text.find('{')
-        json_end = cleaned_text.rfind('}') + 1
-        if json_start >= 0 and json_end > json_start:
-            json_str = cleaned_text[json_start:json_end]
-            ddr_data = json.loads(json_str)
+        start = cleaned.find('{')
+        end = cleaned.rfind('}') + 1
+        if start >= 0 and end > start:
+            ddr_data = json.loads(cleaned[start:end])
         else:
-            raise ValueError("No JSON found in response")
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Could not parse JSON response: {e}")
-        # Return a fallback structure
+            raise ValueError("No JSON found")
+    except json.JSONDecodeError:
         ddr_data = {
-            "property_issue_summary": response_text[:200],
+            "property_issue_summary": "Unable to parse response",
             "area_observations": [],
             "probable_root_causes": "Not Available",
-            "severity_assessment": {"overall_level": "Medium", "reasoning": "Unable to parse response"},
+            "severity_assessment": {"overall_level": "Medium", "reasoning": "Parse error"},
             "recommended_actions": [],
-            "additional_notes": "Generated with parsing fallback",
+            "additional_notes": "Parsing fallback used",
             "missing_or_unclear_info": ["Complete structured analysis"]
         }
 
-    return ddr_data, inspection_data['images'], thermal_data['images'], inspection_data.get('area_to_images', {})
+    return (
+        ddr_data,
+        inspection_data.get('images', []),
+        thermal_data.get('images', []),
+        inspection_data.get('area_to_images', {})
+    )

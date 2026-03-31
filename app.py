@@ -1,5 +1,16 @@
 """Streamlit web UI for DDR Report Generation."""
+import sys
+import traceback
+
+# Set up page config FIRST before any other Streamlit commands
 import streamlit as st
+st.set_page_config(
+    page_title="DDR Report Generator",
+    page_icon="📋",
+    layout="wide"
+)
+
+# Now import other modules with error handling
 import tempfile
 import os
 from pathlib import Path
@@ -8,8 +19,8 @@ try:
     from extractor import extract_text_and_images
     from llm_processor import process_documents
     from report_generator import generate_docx
-except ImportError as e:
-    st.error(f"❌ Import error: {e}")
+except Exception as e:
+    st.error(f"❌ Import error: {type(e).__name__}: {e}")
     st.stop()
 
 
@@ -37,13 +48,7 @@ def cached_extract_thermal(file_bytes, filename):
     finally:
         os.unlink(temp_path)
 
-# Page config
-st.set_page_config(
-    page_title="DDR Report Generator",
-    page_icon="📋",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# Page config already set above
 
 # Custom CSS for better styling
 st.markdown("""
@@ -222,3 +227,7 @@ st.markdown("""
     **About DDR Reports**: Detailed Diagnostic Reports provide a structured analysis of property
     inspection findings with thermal imaging data integration, severity assessments, and actionable recommendations.
     """)
+
+# Catch any unhandled exceptions for debugging
+if __name__ == "__main__":
+    pass  # Streamlit runs this file directly

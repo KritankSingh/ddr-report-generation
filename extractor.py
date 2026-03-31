@@ -24,9 +24,10 @@ def extract_text_and_images(pdf_path, max_images_per_area=2, min_image_size_kb=1
     images = []
     images_by_page = {}
     min_size_bytes = min_image_size_kb * 1024
+    total_pages = len(doc)  # Store page count before closing
 
     # Extract text and images page by page
-    for page_num in range(len(doc)):
+    for page_num in range(total_pages):
         page = doc[page_num]
 
         # Extract text
@@ -78,5 +79,5 @@ def extract_text_and_images(pdf_path, max_images_per_area=2, min_image_size_kb=1
         "images": images,
         "images_by_page": images_by_page,
         "pdf_name": pdf_path.name,
-        "total_pages": len(doc)
+        "total_pages": total_pages
     }

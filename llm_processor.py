@@ -118,19 +118,23 @@ IMPORTANT FOR IMAGE MAPPING:
 
 Now generate the complete JSON DDR structure as specified."""
 
-    print("Calling Claude API for DDR structuring...")
-    message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=4096,
-        system=SYSTEM_PROMPT,
-        messages=[
-            {"role": "user", "content": user_message}
-        ]
-    )
+    try:
+        message = client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=4096,
+            system=SYSTEM_PROMPT,
+            messages=[
+                {"role": "user", "content": user_message}
+            ]
+        )
+    except Exception as api_error:
+        raise RuntimeError(f"Claude API call failed: {type(api_error).__name__}: {str(api_error)}")
 
     # Parse the JSON response
-    response_text = message.content[0].text
-    print(f"[DEBUG] DDR generated (first 300 chars):\n{response_text[:300]}\n")
+    try:
+        response_text = message.content[0].text
+    except (IndexError, AttributeError) as e:
+        raise RuntimeError(f"Could not extract text from API response: {str(e)}")
 
     # Try to extract JSON from response
     try:

@@ -151,14 +151,12 @@ if generate_button:
                     inspection_file.getbuffer().tobytes(),
                     inspection_file.name
                 )
-                st.write(f"DEBUG: Inspection data extracted. Text length: {len(inspection_data.get('text', ''))}")
 
                 progress_bar.progress(30, text="📖 Extracting thermal report...")
                 thermal_data = cached_extract_thermal(
                     thermal_file.getbuffer().tobytes(),
                     thermal_file.name
                 )
-                st.write(f"DEBUG: Thermal data extracted. Text length: {len(thermal_data.get('text', ''))}")
 
                 progress_bar.progress(50, text="✓ Extraction complete")
                 st.success(
@@ -175,11 +173,9 @@ if generate_button:
         try:
             with st.spinner("🤖 Analyzing with Claude API..."):
                 progress_bar.progress(60, text="🤖 Structuring DDR...")
-                st.write("DEBUG: Starting Claude API call...")
                 ddr_data, insp_imgs, therm_imgs, area_mapping = process_documents(
                     inspection_data, thermal_data, api_key=api_key
                 )
-                st.write("DEBUG: Claude API call completed")
                 progress_bar.progress(80, text="✓ Analysis complete")
                 areas_mapped = len(area_mapping) if area_mapping else 0
                 st.success(f"✓ DDR structure generated successfully ({areas_mapped} areas mapped)")
@@ -198,11 +194,9 @@ if generate_button:
         try:
             with st.spinner("📝 Generating DOCX report..."):
                 progress_bar.progress(90, text="📝 Generating report...")
-                st.write("DEBUG: Starting DOCX generation...")
                 with tempfile.TemporaryDirectory() as tmpdir:
                     output_docx = Path(tmpdir) / "DDR_Report.docx"
                     generate_docx(ddr_data, insp_imgs, therm_imgs, str(output_docx))
-                    st.write("DEBUG: DOCX file generated")
 
                     # Read the generated file
                     with open(output_docx, "rb") as f:

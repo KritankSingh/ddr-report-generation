@@ -3,8 +3,6 @@ import json
 import os
 from anthropic import Anthropic
 
-client = Anthropic(api_key=os.getenv("Anthropic_API_Key"))
-
 # System prompt for DDR generation
 SYSTEM_PROMPT = """You are an expert in analyzing property inspection and thermal reports.
 Your task is to generate a structured Detailed Diagnostic Report (DDR) with 7 sections.
@@ -64,7 +62,7 @@ Your task is to generate a structured Detailed Diagnostic Report (DDR) with 7 se
 16. Each area should get DIFFERENT thermal images (not repeating the same image).
 """
 
-def process_documents(inspection_data, thermal_data):
+def process_documents(inspection_data, thermal_data, api_key=None):
     """
     Process extracted inspection and thermal report data using Claude API.
     Uses pre-mapped inspection images (from area_to_images) and maps thermal images.
@@ -72,10 +70,20 @@ def process_documents(inspection_data, thermal_data):
     Args:
         inspection_data: dict with 'text', 'images', 'area_to_images' from inspection PDF
         thermal_data: dict with 'text', 'images', 'area_to_images' from thermal PDF
+        api_key: Anthropic API key (optional, falls back to env var)
 
     Returns:
         tuple: (ddr_data, inspection_images, thermal_images, area_image_mapping)
     """
+    # Get API key from parameter or environment
+    if api_key is None:
+        api_key = os.getenv("Anthropic_API_Key")
+
+    if not api_key:
+        raise ValueError("Anthropic API key not provided and not found in environment")
+
+    # Create Anthropic client with provided API key
+    client = Anthropic(api_key=api_key)
     # Build inspection area summary for the API
     inspection_area_summary = ""
     if inspection_data.get('area_to_images'):

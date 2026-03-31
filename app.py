@@ -3,11 +3,6 @@ import streamlit as st
 import tempfile
 import os
 from pathlib import Path
-from dotenv import load_dotenv
-import hashlib
-
-# Load environment variables
-load_dotenv()
 
 from extractor import extract_text_and_images
 from llm_processor import process_documents
@@ -70,9 +65,21 @@ st.markdown("# 📋 DDR Report Generator", unsafe_allow_html=True)
 st.markdown("Generate structured Detailed Diagnostic Reports from inspection and thermal PDFs")
 st.divider()
 
-# Check API key
-if not os.getenv("Anthropic_API_Key"):
-    st.error("❌ Anthropic API Key not found. Please add `Anthropic_API_Key` to your `.env` file.")
+# Check and load API key from Streamlit secrets
+try:
+    api_key = st.secrets["Anthropic_API_Key"]
+    # Also set in environment for llm_processor compatibility
+    os.environ["Anthropic_API_Key"] = api_key
+except KeyError as e:
+    st.error(
+        f"❌ Anthropic API Key not found in Streamlit secrets. "
+        f"\n\nPlease add your API key to `.streamlit/secrets.toml`:\n"
+        f"```\nAnthropic_API_Key = 'sk-ant-...'\n```\n"
+        f"Or set it via Streamlit Cloud settings (Settings → Secrets)"
+    )
+    st.stop()
+except Exception as e:
+    st.error(f"❌ Error loading API key: {e}")
     st.stop()
 
 # Initialize session state for managing uploads and generation state
@@ -151,7 +158,9 @@ if generate_button:
         with st.spinner("🤖 Analyzing with Claude API..."):
             progress_bar.progress(60, text="🤖 Structuring DDR...")
             try:
-                ddr_data, insp_imgs, therm_imgs, area_mapping = process_documents(inspection_data, thermal_data)
+                ddr_data, insp_imgs, therm_imgs, area_mapping = process_documents(
+                    inspection_data, thermal_data, api_key=api_key
+                )
                 progress_bar.progress(80, text="✓ Analysis complete")
                 areas_mapped = len(area_mapping) if area_mapping else 0
                 st.success(f"✓ DDR structure generated successfully ({areas_mapped} areas mapped)")

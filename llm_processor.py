@@ -67,34 +67,35 @@ Your task is to generate a structured Detailed Diagnostic Report (DDR) with 7 se
 def process_documents(inspection_data, thermal_data):
     """
     Process extracted inspection and thermal report data using Claude API.
-    Maps inspection images to areas and thermal images to sections.
+    Uses pre-mapped inspection images (from area_to_images) and maps thermal images.
 
     Args:
-        inspection_data: dict with 'text', 'images', 'images_by_page' from inspection PDF
-        thermal_data: dict with 'text', 'images', 'images_by_page' from thermal PDF
+        inspection_data: dict with 'text', 'images', 'area_to_images' from inspection PDF
+        thermal_data: dict with 'text', 'images', 'area_to_images' from thermal PDF
 
     Returns:
-        tuple: (ddr_data, inspection_images, thermal_images)
+        tuple: (ddr_data, inspection_images, thermal_images, area_image_mapping)
     """
-    # Prepare thermal image metadata for reference
+    # Build inspection area summary for the API
+    inspection_area_summary = ""
+    if inspection_data.get('area_to_images'):
+        inspection_area_summary = "\n\n**INSPECTION IMAGES MAPPED TO AREAS:**\n"
+        for area_name, images in inspection_data['area_to_images'].items():
+            inspection_area_summary += f"- {area_name}: {len(images)} image(s)\n"
+
+    # Prepare thermal image metadata
     thermal_image_info = ""
     if thermal_data.get('images'):
-        thermal_image_info = "\n\n**THERMAL IMAGES EXTRACTED:** (total " + str(len(thermal_data['images'])) + " images)\n"
-        thermal_image_info += "These are indexed 0-" + str(len(thermal_data['images']) - 1) + " based on their order in the PDF.\n"
+        thermal_image_info = f"\n\n**THERMAL IMAGES EXTRACTED:** (total {len(thermal_data['images'])} images)\n"
+        thermal_image_info += f"These are indexed 0-{len(thermal_data['images']) - 1} based on their order in the PDF.\n"
         thermal_image_info += "Assign thermal_image_indices to areas where thermal data is relevant.\n"
-
-    # Prepare inspection images note
-    inspection_image_note = ""
-    if inspection_data.get('images_by_page'):
-        inspection_image_note = f"\n\n**INSPECTION IMAGES EXTRACTED:** (total {len(inspection_data['images'])} images across {len(inspection_data['images_by_page'])} pages)\n"
-        inspection_image_note += "Images are pre-filtered (>10KB) and limited to best quality per area.\n"
 
     # Prepare the user message with both documents
     user_message = f"""Please analyze these two property inspection documents and generate a DDR.
 
 **INSPECTION REPORT:**
 {inspection_data['text'][:8000]}
-{inspection_image_note}
+{inspection_area_summary}
 
 **THERMAL REPORT:**
 {thermal_data['text'][:4000]}
@@ -105,6 +106,7 @@ IMPORTANT FOR IMAGE MAPPING:
 - Use indices 0-{len(thermal_data['images']) - 1} to reference thermal images
 - Assign different images to different areas (avoid repeating same image)
 - Use empty array [] if no thermal images apply to an area
+- Inspection images are pre-mapped to areas; focus on thermal image assignment
 
 Now generate the complete JSON DDR structure as specified."""
 
@@ -120,7 +122,7 @@ Now generate the complete JSON DDR structure as specified."""
 
     # Parse the JSON response
     response_text = message.content[0].text
-    print(f"[DEBUG] Raw LLM response:\n{response_text[:500]}\n")
+    print(f"[DEBUG] DDR generated (first 300 chars):\n{response_text[:300]}\n")
 
     # Try to extract JSON from response
     try:
@@ -157,4 +159,4 @@ Now generate the complete JSON DDR structure as specified."""
             "missing_or_unclear_info": ["Complete structured analysis"]
         }
 
-    return ddr_data, inspection_data['images'], thermal_data['images']
+    return ddr_data, inspection_data['images'], thermal_data['images'], inspection_data.get('area_to_images', {})

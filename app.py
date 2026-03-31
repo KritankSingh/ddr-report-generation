@@ -151,9 +151,10 @@ if generate_button:
         with st.spinner("🤖 Analyzing with Claude API..."):
             progress_bar.progress(60, text="🤖 Structuring DDR...")
             try:
-                ddr_data, insp_imgs, therm_imgs = process_documents(inspection_data, thermal_data)
+                ddr_data, insp_imgs, therm_imgs, area_mapping = process_documents(inspection_data, thermal_data)
                 progress_bar.progress(80, text="✓ Analysis complete")
-                st.success("✓ DDR structure generated successfully")
+                areas_mapped = len(area_mapping) if area_mapping else 0
+                st.success(f"✓ DDR structure generated successfully ({areas_mapped} areas mapped)")
             except KeyError as e:
                 st.error(f"❌ API Key error: {e}. Ensure `Anthropic_API_Key` is set correctly.")
                 st.stop()

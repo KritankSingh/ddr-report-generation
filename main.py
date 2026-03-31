@@ -53,8 +53,10 @@ def main():
 
     # Step 2: Process with Claude API
     print("\n[2/3] Processing with Claude API...")
-    ddr_data, insp_imgs, therm_imgs = process_documents(inspection_data, thermal_data)
+    ddr_data, insp_imgs, therm_imgs, area_mapping = process_documents(inspection_data, thermal_data)
     print("  [OK] DDR structured successfully")
+    if area_mapping:
+        print(f"  [OK] {len(area_mapping)} areas with pre-mapped images")
 
     # Step 3: Generate DOCX report
     print(f"\n[3/3] Generating DOCX report...")

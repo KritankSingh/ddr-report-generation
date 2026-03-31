@@ -156,6 +156,8 @@ if generate_button:
                 except Exception as e:
                     st.error(f"❌ Report generation error: {e}")
                     st.stop()
+        except Exception as e:
+            st.error(f"❌ Unexpected error during report generation: {e}")
 
 # Download section (only show if report was generated)
 if st.session_state.report_generated and st.session_state.output_file:
